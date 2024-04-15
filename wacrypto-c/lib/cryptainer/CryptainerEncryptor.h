@@ -11,31 +11,42 @@
 // Define data structures
 struct SymmetricKey {
     char cipher_algo[100];
-    char symmetric_key[100]; // assuming symmetric key is a string for simplicity
-    char payload_digest_algos[10][100];
 };
 
+typedef struct PayloadCipherLayer PayloadCipherLayer;
 struct PayloadCipherLayer {
     char payload_cipher_algo[100];
     char* payload_macs; // will be filled later
     char key_ciphertext[100]; // assuming key ciphertext is a string for simplicity
-    struct SymmetricKey symkey;
+    char symmetric_key[100]; // assuming symmetric key is a string for simplicity
+    char payload_digest_algos[10][100];
+    char payload_signatures[100];
+    char key_cipher_layers[100];
 };
 
+typedef struct Cryptainer Cryptainer;
 struct Cryptainer {
     char cryptainer_state[100];
     char cryptainer_format[100];
     char cryptainer_uid[100];
     char keychain_uid[100];
     char* payload_ciphertext_struct; // will be filled later
+    PayloadCipherLayer payload_cipher_layers[100];
     char* cryptainer_metadata; // assuming cryptainer metadata is a string for simplicity
 };
 
+typedef struct PayloadEncryptionPipeline PayloadEncryptionPipeline;
+struct PayloadEncryptionPipeline {
+    char* output_stream;
+    char* cipher_streams;
+};
 typedef struct wa_CryptainerEncryptor wa_CryptainerEncryptor;
 
 struct wa_CryptainerEncryptor
 {
-    /* data */
+    struct Cryptainer cryptainer;
+    struct PayloadCipherLayer payload_cipher_layer_extracts;
+    struct PayloadEncryptionPipeline payload_encryption_pipeline;
 };
 
 typedef struct cryptoconf cryptoconf;

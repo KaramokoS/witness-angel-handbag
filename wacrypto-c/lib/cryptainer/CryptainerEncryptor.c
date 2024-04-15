@@ -1,5 +1,6 @@
 #include "CryptainerEncryptor.h"
 #include "cipher.c"
+#include "cJSON.h"
 
 uint8_t* crypt(const char *input, uint8_t *key, uint8_t *iv);
 
@@ -11,7 +12,7 @@ char* wa_encrypt_key_through_multiple_layers(const char*, const char*, const cha
 
 void wa_deepcopy_dict(const struct Cryptainer*, struct Cryptainer*);
 
-struct SymmetricKey* wa_generate_cryptainer_base_and_secrets(const char*, const char*);
+void wa_generate_cryptainer_base_and_secrets(wa_CryptainerEncryptor* const self, const char*, const char*);
 
 void wa_CryptainerEncryptor_init(wa_CryptainerEncryptor* const self)
 {
@@ -30,8 +31,8 @@ int wa_CryptainerEncryptor_encryptData(wa_CryptainerEncryptor* const self, char*
     unsigned char encrypted_data;
     do {
         crypt(encrypted_data, *keys, iv);
-        keys++
-    } while(keys != NULL)
+        keys++;
+    } while(keys != NULL);
 }
 
 wa_CryptainerEncryptor * wa_CryptainerEncryptor_create(void); 
@@ -39,12 +40,16 @@ void wa_CryptainerEncryptor_destroy(wa_CryptainerEncryptor* const self);
 
 void wa_build_cryptainer_and_encryption_pipeline(wa_CryptainerEncryptor* const self, cryptoconf* const m_cryptoconf, char **output_stream, char **cryptainer_metadata)
 {
-  char* cryptainer, char* payload_cipher_layer_extracts = wa_generate_cryptainer_base_and_secrets(m_cryptoconf, cryptainer_metadata);
-  char* encryption_pipeline = PayloadEncryptionPipeline(output_stream, payload_cipher_layer_extracts);
+  wa_generate_cryptainer_base_and_secrets(self, m_cryptoconf, cryptainer_metadata);
+  Cryptainer cryptainer = self->cryptainer; 
+  PayloadCipherLayer payload_cipher_layer_extracts = self->payload_cipher_layer;
+  PayloadEncryptionPipeline encryption_pipeline;
+  encryption_pipeline.output_stream = output_stream;
+  self->payload_encryption_pipeline = encryption_pipeline;
 }
 
 
-struct SymmetricKey* wa_generate_cryptainer_base_and_secrets(const char* cryptoconf, const char* cryptainer_metadata) {
+void wa_generate_cryptainer_base_and_secrets(wa_CryptainerEncryptor* const self, const char* cryptoconf, const char* cryptainer_metadata) {
     // Assuming cryptoconf and cryptainer_metadata are JSON strings
 
     // Check if cryptainer_metadata is NULL or a dictionary
@@ -54,12 +59,25 @@ struct SymmetricKey* wa_generate_cryptainer_base_and_secrets(const char* cryptoc
     }
 
     // Initialize variables
-    struct Cryptainer cryptainer;
-    struct SymmetricKey* payload_cipher_layer_extracts = NULL;
+    Cryptainer cryptainer;
+    memset(&cryptainer, 0, sizeof(Cryptainer));
 
     char* cryptainer_uid = wa_generate_uuid0();
 
     char* default_keychain_uid = NULL;
+    cJSON* cryptoconf_parsed =  cJSON_Parse(cryptoconf);
+    if(cryptoconf_parsed != NULL) {
+        cJSON* default_keychain_uid_cjson = cJSON_GetObjectItem(cryptoconf_parsed, "keychain_uid");
+        if(default_keychain_uid_cjson != NULL && cJSON_IsString(default_keychain_uid_cjson)) {
+            default_keychain_uid = strdup(default_keychain_uid_cjson->valuestring);
+        }
+        cJSON_Delete(default_keychain_uid_cjson);
+    }
+    cJSON_Delete(cryptoconf_parsed);
+
+    if(default_keychain_uid == NULL) {
+        default_keychain_uid = wa_generate_uuid0();
+    }
 
     // Deep copy cryptoconf to cryptainer
     wa_deepcopy_dict((struct Cryptainer*)cryptoconf, &cryptainer);
@@ -69,8 +87,10 @@ struct SymmetricKey* wa_generate_cryptainer_base_and_secrets(const char* cryptoc
         exit(EXIT_FAILURE);
     }
 
+    int paload_cipher_layers_count = sizeof(cryptainer.payload_cipher_layers) / sizeof(cryptainer.payload_cipher_layers[0]);
+    PayloadCipherLayer* payload_cipher_layer_extracts = malloc(paload_cipher_layers_count * sizeof(PayloadCipherLayer));
     // Iterate through payload_cipher_layers
-    for (int i = 0; i < sizeof(cryptainer.payload_cipher_layers) / sizeof(cryptainer.payload_cipher_layers[0]); i++) {
+    for (int i = 0; i < paload_cipher_layers_count; i++) {
 
         struct PayloadCipherLayer payload_cipher_layer = cryptainer.payload_cipher_layers[i];
 
@@ -80,15 +100,16 @@ struct SymmetricKey* wa_generate_cryptainer_base_and_secrets(const char* cryptoc
         char* key_ciphertext = wa_encrypt_key_through_multiple_layers(default_keychain_uid, symkey, payload_cipher_layer.key_cipher_layers, cryptainer_metadata);
 
         // Update payload_cipher_layer
-        strcpy(payload_cipher_layer.symkey.cipher_algo, payload_cipher_layer.payload_cipher_algo);
-        strcpy(payload_cipher_layer.symkey.symmetric_key, symkey);
+        strcpy(payload_cipher_layer.symmetric_key, symkey);
         for (int j = 0; j < sizeof(payload_cipher_layer.payload_digest_algos) / sizeof(payload_cipher_layer.payload_digest_algos[0]); j++) {
-            strcpy(payload_cipher_layer.symkey.payload_digest_algos[j], payload_cipher_layer.payload_digest_algos[j]);
+            strcpy(payload_cipher_layer.payload_digest_algos[j], payload_cipher_layer.payload_signatures[j]);
         }
         strcpy(payload_cipher_layer.key_ciphertext, key_ciphertext);
 
-        payload_cipher_layer_extracts = realloc(payload_cipher_layer_extracts, (i + 1) * sizeof(struct SymmetricKey));
-        payload_cipher_layer_extracts[i] = payload_cipher_layer.symkey;
+        payload_cipher_layer_extracts[i] = payload_cipher_layer;
+
+        free(symkey);
+        free(key_ciphertext);
     }
 
     // Update cryptainer fields
@@ -98,8 +119,11 @@ struct SymmetricKey* wa_generate_cryptainer_base_and_secrets(const char* cryptoc
     strcpy(cryptainer.keychain_uid, default_keychain_uid);
     cryptainer.payload_ciphertext_struct = NULL; // Must be filled asap
     cryptainer.cryptainer_metadata = cryptainer_metadata;
-
-    return payload_cipher_layer_extracts;
+    
+    self->cryptainer = cryptainer;
+    memcpy(&self->payload_cipher_layer_extracts, payload_cipher_layer_extracts, paload_cipher_layers_count * sizeof(PayloadCipherLayer));
+    free(payload_cipher_layer_extracts);
+    free(default_keychain_uid);
 }
 
 
