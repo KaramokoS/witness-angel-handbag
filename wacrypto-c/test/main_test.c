@@ -1,3 +1,4 @@
+#include <lwjson.h>
 #include <jsmn.h>
 #include <unity.h>
 #include <string.h>
@@ -6,13 +7,8 @@ static const char *JSON_STRING =
     "{\"user\": \"johndoe\", \"admin\": false, \"uid\": 1000,\n  "
     "\"groups\": [\"users\", \"wheel\", \"audio\", \"video\"]}";
 
-static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
-  if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
-      strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
-    return 0;
-  }
-  return -1;
-}
+static lwjson_token_t tokens[128];
+static lwjson_t lwjson;
 
 void setUp(void)
 {
@@ -22,6 +18,30 @@ void setUp(void)
 void tearDown(void)
 {
   // clean stuff up here
+}
+
+void test_function_minimal_lwjson(void) {
+    lwjson_init(&lwjson, tokens, LWJSON_ARRAYSIZE(tokens));
+    if (lwjson_parse(&lwjson, JSON_STRING) == lwjsonOK) {
+        const lwjson_token_t* t;
+        // printf("JSON parsed..\r\n");
+
+        /* Find custom key in JSON */
+        if ((t = lwjson_find(&lwjson, "groups")) != NULL) {
+            TEST_ASSERT_EQUAL_INT(LWJSON_TYPE_ARRAY, t->type);
+        }
+
+        /* Call this when not used anymore */
+        lwjson_free(&lwjson);
+    }
+}
+
+static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
+  if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
+      strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+    return 0;
+  }
+  return -1;
 }
 
 void test_function_jsmn_simple_json(void)
@@ -68,6 +88,7 @@ void app_main()
 {
     UNITY_BEGIN();
 
+    RUN_TEST(test_function_minimal_lwjson);
     RUN_TEST(test_function_jsmn_simple_json);
 
     UNITY_END();

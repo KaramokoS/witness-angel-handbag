@@ -147,6 +147,7 @@
                 "/Users/ksamassa/Documents/Perso/WitnessAngel/witness-angel-handbag/wacrypto-c/lib/cipher",
                 "/Users/ksamassa/Documents/Perso/WitnessAngel/witness-angel-handbag/wacrypto-c/lib/cryptainer",
                 "/Users/ksamassa/Documents/Perso/WitnessAngel/witness-angel-handbag/wacrypto-c/lib/jsmn",
+                "/Users/ksamassa/Documents/Perso/WitnessAngel/witness-angel-handbag/wacrypto-c/lib/lwjson",
                 "/Users/ksamassa/Documents/Perso/WitnessAngel/witness-angel-handbag/wacrypto-c/.pio/libdeps/esp32dev/Unity/src",
                 ""
             ],
@@ -292,6 +293,7 @@
                     "/Users/ksamassa/Documents/Perso/WitnessAngel/witness-angel-handbag/wacrypto-c/lib/cipher",
                     "/Users/ksamassa/Documents/Perso/WitnessAngel/witness-angel-handbag/wacrypto-c/lib/cryptainer",
                     "/Users/ksamassa/Documents/Perso/WitnessAngel/witness-angel-handbag/wacrypto-c/lib/jsmn",
+                    "/Users/ksamassa/Documents/Perso/WitnessAngel/witness-angel-handbag/wacrypto-c/lib/lwjson",
                     "/Users/ksamassa/Documents/Perso/WitnessAngel/witness-angel-handbag/wacrypto-c/.pio/libdeps/esp32dev/Unity/src",
                     ""
                 ]
