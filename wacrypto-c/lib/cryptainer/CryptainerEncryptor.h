@@ -7,7 +7,7 @@
 
 // Define constants
 #define CRYPTAINER_FORMAT "example_format"
-
+#define MAX_UID_LENGTH 64
 // Define data structures
 struct SymmetricKey {
     char cipher_algo[100];

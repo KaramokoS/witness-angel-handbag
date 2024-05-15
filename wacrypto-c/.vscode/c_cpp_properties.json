@@ -305,7 +305,7 @@
                 "SOC_MMU_PAGE_SIZE=CONFIG_MMU_PAGE_SIZE",
                 "IDF_VER=\"5.1.2\"",
                 "ESP_PLATFORM",
-                "PLATFORMIO=60114",
+                "PLATFORMIO=60115",
                 "ARDUINO_ESP32_DEV",
                 ""
             ],

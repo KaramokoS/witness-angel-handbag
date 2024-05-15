@@ -1,10 +1,11 @@
 #include "CryptainerEncryptor.h"
 #include "cipher.c"
 #include "cJSON.h"
+#include "lwjson.h"
 
 uint8_t* crypt(const char *input, uint8_t *key, uint8_t *iv);
 
-char* wa_generate_uuid0(void);
+void wa_generate_uuid0(char*);
 
 char* wa_generate_symkey(const char*);
 
@@ -62,21 +63,35 @@ void wa_generate_cryptainer_base_and_secrets(wa_CryptainerEncryptor* const self,
     Cryptainer cryptainer;
     memset(&cryptainer, 0, sizeof(Cryptainer));
 
-    char* cryptainer_uid = wa_generate_uuid0();
+    char cryptainer_uid[MAX_UID_LENGTH];
+    wa_generate_uuid0(cryptainer_uid);
 
-    char* default_keychain_uid = NULL;
-    cJSON* cryptoconf_parsed =  cJSON_Parse(cryptoconf);
-    if(cryptoconf_parsed != NULL) {
-        cJSON* default_keychain_uid_cjson = cJSON_GetObjectItem(cryptoconf_parsed, "keychain_uid");
-        if(default_keychain_uid_cjson != NULL && cJSON_IsString(default_keychain_uid_cjson)) {
-            default_keychain_uid = strdup(default_keychain_uid_cjson->valuestring);
+    static lwjson_token_t tokens[128];
+    static lwjson_t lwjson;
+    lwjson_init(&lwjson, tokens, LWJSON_ARRAYSIZE(tokens));
+
+    char default_keychain_uid[MAX_UID_LENGTH];
+
+    if (lwjson_parse(&lwjson, cryptoconf) == lwjsonOK) {
+        const lwjson_token_t* tkn;
+        printf("JSON parsed..\r\n");
+
+        /* Find custom key in JSON */
+        tkn = lwjson_find_ex(&lwjson, NULL, "keychain_uid.$binary.base64");
+        if(tkn->u.str.token_value_len < MAX_UID_LENGTH) {
+            strncpy(default_keychain_uid, strndup(tkn->u.str.token_value, (int)tkn->u.str.token_value_len), tkn->u.str.token_value_len);
+            default_keychain_uid[tkn->u.str.token_value_len+1] = '\0';
+        } else {
+            printf("Error: keychain uid length is greater MAX_UID_LENGTH\n");
+            exit(EXIT_FAILURE);
         }
-        cJSON_Delete(default_keychain_uid_cjson);
-    }
-    cJSON_Delete(cryptoconf_parsed);
 
-    if(default_keychain_uid == NULL) {
-        default_keychain_uid = wa_generate_uuid0();
+        lwjson_free(&lwjson);
+    }
+
+
+    if(default_keychain_uid[0] == '\0') {
+        wa_generate_uuid0(default_keychain_uid);
     }
 
     // Deep copy cryptoconf to cryptainer
@@ -127,8 +142,8 @@ void wa_generate_cryptainer_base_and_secrets(wa_CryptainerEncryptor* const self,
 }
 
 
-char* wa_generate_uuid0() {
-    return "example_uuid";
+void wa_generate_uuid0(char* key_chain) {
+    strncpy(key_chain, "example_uuid", MAX_UID_LENGTH);
 }
 
 char* wa_generate_symkey(const char* cipher_algo) {
