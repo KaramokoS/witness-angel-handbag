@@ -3,13 +3,21 @@
 #include "cJSON.h"
 #include "lwjson.h"
 
+void dump_to_json_bytes(unsigned char* key_cipherdict, unsigned char* key_bytes) {
+    // Placeholder for the JSON serialization function
+    // Replace this with actual implementation
+    strcpy((char*)key_bytes, (char*)key_cipherdict);  
+}
+
+
 uint8_t* crypt(const char *input, uint8_t *key, uint8_t *iv);
 
 void wa_generate_uuid0(char*);
 
 char* wa_generate_symkey(const char*);
 
-char* wa_encrypt_key_through_multiple_layers(const char*, const char*, const char*, const char*);
+void wa_encrypt_key_through_single_layer(const char*, const char*, KeyCipherLayer*, const char*, const char[]);
+char* wa_encrypt_key_through_multiple_layers(const char*, const char*, KeyCipherLayer*[], size_t, const char*);
 
 void wa_deepcopy_dict(const struct Cryptainer*, struct Cryptainer*);
 
@@ -46,6 +54,7 @@ void wa_build_cryptainer_and_encryption_pipeline(wa_CryptainerEncryptor* const s
   PayloadCipherLayer payload_cipher_layer_extracts = self->payload_cipher_layer;
   PayloadEncryptionPipeline encryption_pipeline;
   encryption_pipeline.output_stream = output_stream;
+  encryption_pipeline.cipher_streams = NULL; /* retrieve cipher_stram*/;
   self->payload_encryption_pipeline = encryption_pipeline;
 }
 
@@ -102,17 +111,18 @@ void wa_generate_cryptainer_base_and_secrets(wa_CryptainerEncryptor* const self,
         exit(EXIT_FAILURE);
     }
 
-    int paload_cipher_layers_count = sizeof(cryptainer.payload_cipher_layers) / sizeof(cryptainer.payload_cipher_layers[0]);
+    size_t paload_cipher_layers_count = sizeof(cryptainer.payload_cipher_layers) / sizeof(cryptainer.payload_cipher_layers[0]);
     PayloadCipherLayer* payload_cipher_layer_extracts = malloc(paload_cipher_layers_count * sizeof(PayloadCipherLayer));
     // Iterate through payload_cipher_layers
-    for (int i = 0; i < paload_cipher_layers_count; i++) {
+    for (size_t i = 0; i < paload_cipher_layers_count; i++) {
 
         struct PayloadCipherLayer payload_cipher_layer = cryptainer.payload_cipher_layers[i];
 
         char* symkey = wa_generate_symkey(payload_cipher_layer.payload_cipher_algo);
 
         // Encrypt key through multiple layers
-        char* key_ciphertext = wa_encrypt_key_through_multiple_layers(default_keychain_uid, symkey, payload_cipher_layer.key_cipher_layers, cryptainer_metadata);
+        size_t key_cipher_layers_length = sizeof(payload_cipher_layer.key_cipher_layers) / sizeof(payload_cipher_layer.key_cipher_layers[0]);
+        char* key_ciphertext = wa_encrypt_key_through_multiple_layers(default_keychain_uid, symkey, payload_cipher_layer.key_cipher_layers, key_cipher_layers_length, cryptainer_metadata);
 
         // Update payload_cipher_layer
         strcpy(payload_cipher_layer.symmetric_key, symkey);
@@ -150,8 +160,89 @@ char* wa_generate_symkey(const char* cipher_algo) {
     return "example_symmetric_key";
 }
 
-char* wa_encrypt_key_through_multiple_layers(const char* default_keychain_uid, const char* key_bytes, const char* key_cipher_layers, const char* cryptainer_metadata) {
-    return "example_key_ciphertext";
+char* wa_encrypt_key_through_multiple_layers(const char* default_keychain_uid, 
+                                            const char* key_bytes, 
+                                            KeyCipherLayer* key_cipher_layers[],
+                                            size_t key_cipher_layers_length, 
+                                            const char* cryptainer_metadata) {
+    
+    const char key_cipherdict[MAX_KEY_BYTES_LENGTH];
+    const char key_bytes_initial[MAX_KEY_BYTES_LENGTH];
+    strcpy(key_bytes_initial, key_bytes);
+
+    if(key_cipher_layers_length == 0) {
+        printf("Empty key_cipher_layers list is forbidden in cryptoconf\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    for (size_t i = 0; i < key_cipher_layers_length; i++) {
+        wa_encrypt_key_through_single_layer(
+            default_keychain_uid,
+            key_bytes,
+            key_cipher_layers[i],
+            cryptainer_metadata,
+            key_cipherdict
+        );
+        dump_to_json_bytes(key_cipherdict, key_bytes);  // Thus its remains as bytes all along
+    }
+
+    assert(strcmp((char*)key_bytes, (char*)key_bytes_initial) != 0);  // safety
+
+    return key_bytes;
+}
+
+void wa_encrypt_key_through_single_layer(const char* default_keychain_uid, 
+                                        const char* key_bytes, KeyCipherLayer* key_cipher_layers, 
+                                        const char* cryptainer_metadata, const char charkey_cipherdict[]) {
+    assert(key_bytes != NULL);
+    const char key_cipher_algo[MAX_KEY_BYTES_LENGTH];
+    strcpy(key_cipher_algo, key_cipher_layers->key_cipher_algo);
+    if(strcmp(key_cipher_algo, &SHARED_SECRET_ALGO_MARKER) == 0) {
+
+    } else if (/* condition */) 
+    {
+        /* code */
+    } else {
+
+    }
+    
+    /*
+    key_cipher_algo = key_cipher_layer["key_cipher_algo"]
+
+        if key_cipher_algo == SHARED_SECRET_ALGO_MARKER:
+            key_shared_secret_shards = key_cipher_layer["key_shared_secret_shards"]
+            shard_count = len(key_shared_secret_shards)
+
+            threshold_count = key_cipher_layer["key_shared_secret_threshold"]
+            if not (0 < threshold_count <= shard_count):
+                raise SchemaValidationError(
+                    "Shared secret threshold must be strictly positive and not greater than shard count, in cryptoconf"
+                )
+
+            shards = split_secret_into_shards(
+                secret=key_bytes, shard_count=shard_count, threshold_count=threshold_count
+            )
+
+            assert len(shards) == shard_count
+
+            shard_ciphertexts = []
+
+            for shard, key_shared_secret_shard_conf in zip(shards, key_shared_secret_shards):
+                shard_bytes = dump_to_json_bytes(
+                    shard
+                )  # The tuple (idx, payload) of each shard thus becomes encryptable
+                shard_ciphertext = self._encrypt_key_through_multiple_layers(
+                    default_keychain_uid=default_keychain_uid,
+                    key_bytes=shard_bytes,
+                    key_cipher_layers=key_shared_secret_shard_conf["key_cipher_layers"],
+                    cryptainer_metadata=cryptainer_metadata,
+                )  # Recursive structure
+                assert isinstance(shard_ciphertext, bytes), shard_ciphertext
+                shard_ciphertexts.append(shard_ciphertext)
+
+            key_cipherdict = {"shard_ciphertexts": shard_ciphertexts}  # A dict is more future-proof than list
+
+    */
 }
 
 void wa_deepcopy_dict(const struct Cryptainer* source, struct Cryptainer* destination) {

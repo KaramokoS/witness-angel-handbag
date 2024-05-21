@@ -8,9 +8,21 @@
 // Define constants
 #define CRYPTAINER_FORMAT "example_format"
 #define MAX_UID_LENGTH 64
+#define MAX_KEY_BYTES_LENGTH 64
+#define SHARED_SECRET_ALGO_MARKER "[SHARED_SECRET]"
 // Define data structures
 struct SymmetricKey {
     char cipher_algo[100];
+};
+typedef struct KeyCipherTrustee KeyCipherTrustee;
+struct KeyCipherTrustee {
+    const char* trustee_type;
+};
+
+typedef struct KeyCipherLayer KeyCipherLayer;
+struct KeyCipherLayer {
+    const char* key_cipher_algo;
+    KeyCipherTrustee* key_cipher_trustee; 
 };
 
 typedef struct PayloadCipherLayer PayloadCipherLayer;
@@ -21,7 +33,7 @@ struct PayloadCipherLayer {
     char symmetric_key[100]; // assuming symmetric key is a string for simplicity
     char payload_digest_algos[10][100];
     char payload_signatures[100];
-    char key_cipher_layers[100];
+    KeyCipherLayer* key_cipher_layers[100];
 };
 
 typedef struct Cryptainer Cryptainer;
