@@ -3,12 +3,8 @@
 #include "cJSON.h"
 #include "lwjson.h"
 
-void dump_to_json_bytes(unsigned char* key_cipherdict, unsigned char* key_bytes) {
-    // Placeholder for the JSON serialization function
-    // Replace this with actual implementation
-    strcpy((char*)key_bytes, (char*)key_cipherdict);  
-}
 
+void wa_dump_to_json_bytes(unsigned char* key_cipherdict, unsigned char* key_bytes);
 
 uint8_t* crypt(const char *input, uint8_t *key, uint8_t *iv);
 
@@ -16,12 +12,14 @@ void wa_generate_uuid0(char*);
 
 char* wa_generate_symkey(const char*);
 
-void wa_encrypt_key_through_single_layer(const char*, const char*, KeyCipherLayer*, const char*, const char[]);
+void wa_encrypt_key_through_single_layer(const char*, const char*, KeyCipherLayer*, const char*, char*);
 char* wa_encrypt_key_through_multiple_layers(const char*, const char*, KeyCipherLayer*[], size_t, const char*);
 
 void wa_deepcopy_dict(const struct Cryptainer*, struct Cryptainer*);
 
 void wa_generate_cryptainer_base_and_secrets(wa_CryptainerEncryptor* const self, const char*, const char*);
+
+Shard* wa_split_secret_into_shards(const uint8_t* secret, size_t secret_len, int shard_count, int threshold_count, int* full_shards_count);
 
 void wa_CryptainerEncryptor_init(wa_CryptainerEncryptor* const self)
 {
@@ -166,7 +164,7 @@ char* wa_encrypt_key_through_multiple_layers(const char* default_keychain_uid,
                                             size_t key_cipher_layers_length, 
                                             const char* cryptainer_metadata) {
     
-    const char key_cipherdict[MAX_KEY_BYTES_LENGTH];
+    Ciphertext key_cipherdict[MAX_KEY_BYTES_LENGTH];
     const char key_bytes_initial[MAX_KEY_BYTES_LENGTH];
     strcpy(key_bytes_initial, key_bytes);
 
@@ -183,7 +181,7 @@ char* wa_encrypt_key_through_multiple_layers(const char* default_keychain_uid,
             cryptainer_metadata,
             key_cipherdict
         );
-        dump_to_json_bytes(key_cipherdict, key_bytes);  // Thus its remains as bytes all along
+        wa_dump_to_json_bytes(key_cipherdict, key_bytes);  // Thus its remains as bytes all along
     }
 
     assert(strcmp((char*)key_bytes, (char*)key_bytes_initial) != 0);  // safety
@@ -193,12 +191,53 @@ char* wa_encrypt_key_through_multiple_layers(const char* default_keychain_uid,
 
 void wa_encrypt_key_through_single_layer(const char* default_keychain_uid, 
                                         const char* key_bytes, KeyCipherLayer* key_cipher_layers, 
-                                        const char* cryptainer_metadata, const char charkey_cipherdict[]) {
+                                        const char* cryptainer_metadata, Ciphertext* key_cipherdict) {
     assert(key_bytes != NULL);
     const char key_cipher_algo[MAX_KEY_BYTES_LENGTH];
     strcpy(key_cipher_algo, key_cipher_layers->key_cipher_algo);
     if(strcmp(key_cipher_algo, &SHARED_SECRET_ALGO_MARKER) == 0) {
+        char key_shared_secret_shards[sizeof(key_cipher_layers->u.key_shared_secret_shards)];
+        strcpy(key_shared_secret_shards, key_cipher_layers->u.key_shared_secret_shards);
+        size_t shard_count = sizeof(key_shared_secret_shards) / sizeof(key_shared_secret_shards);
+        size_t threshold_count = key_cipher_layers->u.key_shared_secret_threshold;
+        if(!(0 < threshold_count && threshold_count <= shard_count)) {
+            printf("Shared secret threshold must be strictly positive and not greater than shard count, in cryptoconf");
+            exit(EXIT_FAILURE);
+        }
+        int full_shards_count;
+        Shard* shards = wa_split_secret_into_shards((const uint8_t*)key_bytes, strlen(key_bytes), shard_count, threshold_count, &full_shards_count);
+        size_t shards_length = sizeof(shards->data) / shards->data[0];
+        if(shards_length != shard_count) {
+            printf("shards_length != shard_count");
+            exit(EXIT_FAILURE);
+        }
 
+        //TODO: right memory amount Ciphertext* shard_ciphertexts = (Ciphertext*)malloc(num_shards * sizeof(Ciphertext));
+
+        for (int i = 0; i < shard_count; ++i) {
+            Shard shard = shards[i];
+            KeyCipherLayer key_shared_secret_shard_conf = key_cipher_layers[i];
+
+            size_t shard_bytes_len;
+            uint8_t* shard_bytes;
+            wa_dump_to_json_bytes(shard_bytes, (char*)shard.data);
+            
+            size_t shard_ciphertext_len;
+            uint8_t* shard_ciphertext = wa_encrypt_key_through_multiple_layers(
+                default_keychain_uid,
+                shard_bytes,
+                &key_shared_secret_shard_conf,
+                shard_bytes_len,
+                cryptainer_metadata
+            );
+            
+            assert(shard_ciphertext != NULL);
+
+            key_cipherdict[i].ciphertext = shard_ciphertext;
+            key_cipherdict[i].ciphertext_len = shard_ciphertext_len;
+
+            free(shard_bytes);
+        }
     } else if (/* condition */) 
     {
         /* code */
@@ -206,44 +245,7 @@ void wa_encrypt_key_through_single_layer(const char* default_keychain_uid,
 
     }
     
-    /*
-    key_cipher_algo = key_cipher_layer["key_cipher_algo"]
-
-        if key_cipher_algo == SHARED_SECRET_ALGO_MARKER:
-            key_shared_secret_shards = key_cipher_layer["key_shared_secret_shards"]
-            shard_count = len(key_shared_secret_shards)
-
-            threshold_count = key_cipher_layer["key_shared_secret_threshold"]
-            if not (0 < threshold_count <= shard_count):
-                raise SchemaValidationError(
-                    "Shared secret threshold must be strictly positive and not greater than shard count, in cryptoconf"
-                )
-
-            shards = split_secret_into_shards(
-                secret=key_bytes, shard_count=shard_count, threshold_count=threshold_count
-            )
-
-            assert len(shards) == shard_count
-
-            shard_ciphertexts = []
-
-            for shard, key_shared_secret_shard_conf in zip(shards, key_shared_secret_shards):
-                shard_bytes = dump_to_json_bytes(
-                    shard
-                )  # The tuple (idx, payload) of each shard thus becomes encryptable
-                shard_ciphertext = self._encrypt_key_through_multiple_layers(
-                    default_keychain_uid=default_keychain_uid,
-                    key_bytes=shard_bytes,
-                    key_cipher_layers=key_shared_secret_shard_conf["key_cipher_layers"],
-                    cryptainer_metadata=cryptainer_metadata,
-                )  # Recursive structure
-                assert isinstance(shard_ciphertext, bytes), shard_ciphertext
-                shard_ciphertexts.append(shard_ciphertext)
-
-            key_cipherdict = {"shard_ciphertexts": shard_ciphertexts}  # A dict is more future-proof than list
-
-    */
-}
+    }
 
 void wa_deepcopy_dict(const struct Cryptainer* source, struct Cryptainer* destination) {
     strcpy(destination->cryptainer_state, source->cryptainer_state);
@@ -254,3 +256,52 @@ void wa_deepcopy_dict(const struct Cryptainer* source, struct Cryptainer* destin
     destination->cryptainer_metadata = source->cryptainer_metadata; // Shallow copy for simplicity
 }
 
+Shard* wa_split_secret_into_shards(const uint8_t* secret, size_t secret_len, int shard_count, int threshold_count, int* full_shards_count) {
+    if (shard_count <= 0) {
+        fprintf(stderr, "Shards count must be strictly positive\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (threshold_count > shard_count) {
+        fprintf(stderr, "Threshold count can't be higher than shard count\n");
+        exit(EXIT_FAILURE);
+    }
+
+    uint8_t** chunks;
+    size_t num_chunks;
+    split_as_chunks(secret, secret_len, &chunks, &num_chunks);
+
+    uint8_t*** all_chunk_shards = (uint8_t***)malloc(num_chunks * sizeof(uint8_t**));
+    for (size_t i = 0; i < num_chunks; ++i) {
+        _split_128b_bytestring_into_shards(chunks[i], SHAMIR_CHUNK_LENGTH, shard_count, threshold_count, &all_chunk_shards[i]);
+        free(chunks[i]);
+    }
+    free(chunks);
+
+    Shard* full_shards = (Shard*)malloc(shard_count * sizeof(Shard));
+    for (int i = 0; i < shard_count; ++i) {
+        size_t shard_size = num_chunks * SHAMIR_CHUNK_LENGTH;
+        full_shards[i].index = i + 1;
+        full_shards[i].data = (uint8_t*)malloc(shard_size);
+
+        for (size_t j = 0; j < num_chunks; ++j) {
+            if (all_chunk_shards[j][i][0] != i + 1) {
+                fprintf(stderr, "Shard index mismatch\n");
+                exit(EXIT_FAILURE);
+            }
+            memcpy(full_shards[i].data + j * SHAMIR_CHUNK_LENGTH, all_chunk_shards[j][i] + 1, SHAMIR_CHUNK_LENGTH);
+            free(all_chunk_shards[j][i]);
+        }
+        free(all_chunk_shards[i]);
+    }
+    free(all_chunk_shards);
+
+    *full_shards_count = shard_count;
+    return full_shards;
+}
+
+void wa_dump_to_json_bytes(unsigned char* key_cipherdict, unsigned char* key_bytes) {
+    // Placeholder for the JSON serialization function
+    // Replace this with actual implementation
+    strcpy((char*)key_bytes, (char*)key_cipherdict);  
+}

@@ -10,6 +10,7 @@
 #define MAX_UID_LENGTH 64
 #define MAX_KEY_BYTES_LENGTH 64
 #define SHARED_SECRET_ALGO_MARKER "[SHARED_SECRET]"
+#define SHAMIR_CHUNK_LENGTH 16
 // Define data structures
 struct SymmetricKey {
     char cipher_algo[100];
@@ -22,7 +23,18 @@ struct KeyCipherTrustee {
 typedef struct KeyCipherLayer KeyCipherLayer;
 struct KeyCipherLayer {
     const char* key_cipher_algo;
-    KeyCipherTrustee* key_cipher_trustee; 
+    KeyCipherTrustee* key_cipher_trustee;
+    union {
+        // TODO: Make a struct for this data
+        const char*key_shared_secret_shards;
+        size_t key_shared_secret_threshold;
+    } u;
+    
+};
+typedef struct Ciphertext Ciphertext;
+struct Ciphertext {
+    uint8_t* ciphertext;
+    size_t ciphertext_len;
 };
 
 typedef struct PayloadCipherLayer PayloadCipherLayer;
@@ -59,6 +71,12 @@ struct wa_CryptainerEncryptor
     struct Cryptainer cryptainer;
     struct PayloadCipherLayer payload_cipher_layer_extracts;
     struct PayloadEncryptionPipeline payload_encryption_pipeline;
+};
+
+typedef struct Shard Shard;
+struct Shard {
+    int index;
+    uint8_t* data;
 };
 
 typedef struct cryptoconf cryptoconf;
