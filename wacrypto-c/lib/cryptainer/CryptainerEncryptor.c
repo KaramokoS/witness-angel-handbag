@@ -2,6 +2,7 @@
 #include "cipher.c"
 #include "cJSON.h"
 #include "lwjson.h"
+#include <stdbool.h>
 
 
 void wa_dump_to_json_bytes(unsigned char* key_cipherdict, unsigned char* key_bytes);
@@ -12,6 +13,15 @@ void wa_generate_uuid0(char*);
 
 char* wa_generate_symkey(const char*);
 
+int wa_encrypt_bytestring(char* key_bytes, char* key_cipher_algo, char* sub_symkey[], Ciphertext* key_cipherdict);
+int wa_encrypt_key_with_asymmetric_cipher(
+                                    char* cipher_algo, 
+                                    char* keychain_uid, 
+                                    char* key_bytes, 
+                                    char** trustee,
+                                    char** cryptainer_metadata,
+                                    Ciphertext* key_cipherdict
+);
 void wa_encrypt_key_through_single_layer(const char*, const char*, KeyCipherLayer*, const char*, char*);
 char* wa_encrypt_key_through_multiple_layers(const char*, const char*, KeyCipherLayer*[], size_t, const char*);
 
@@ -188,13 +198,21 @@ char* wa_encrypt_key_through_multiple_layers(const char* default_keychain_uid,
 
     return key_bytes;
 }
-
+bool is_supported_algorithm(const char* algo, const char* supported_algos[], int count) {
+    for (int i = 0; i < count; ++i) {
+        if (strcmp(algo, supported_algos[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+} 
 void wa_encrypt_key_through_single_layer(const char* default_keychain_uid, 
                                         const char* key_bytes, KeyCipherLayer* key_cipher_layers, 
                                         const char* cryptainer_metadata, Ciphertext* key_cipherdict) {
     assert(key_bytes != NULL);
     const char key_cipher_algo[MAX_KEY_BYTES_LENGTH];
     strcpy(key_cipher_algo, key_cipher_layers->key_cipher_algo);
+    size_t supported_sym_key_count = sizeof(SUPPORTED_SYMMETRIC_KEY_ALGOS) / sizeof(SUPPORTED_SYMMETRIC_KEY_ALGOS[0]);
     if(strcmp(key_cipher_algo, &SHARED_SECRET_ALGO_MARKER) == 0) {
         char key_shared_secret_shards[sizeof(key_cipher_layers->u.key_shared_secret_shards)];
         strcpy(key_shared_secret_shards, key_cipher_layers->u.key_shared_secret_shards);
@@ -210,6 +228,7 @@ void wa_encrypt_key_through_single_layer(const char* default_keychain_uid,
         if(shards_length != shard_count) {
             printf("shards_length != shard_count");
             exit(EXIT_FAILURE);
+            //stderr();
         }
 
         //TODO: right memory amount Ciphertext* shard_ciphertexts = (Ciphertext*)malloc(num_shards * sizeof(Ciphertext));
@@ -238,11 +257,51 @@ void wa_encrypt_key_through_single_layer(const char* default_keychain_uid,
 
             free(shard_bytes);
         }
-    } else if (/* condition */) 
+    } else if (is_supported_algorithm(key_cipher_algo, SUPPORTED_SYMMETRIC_KEY_ALGOS,supported_sym_key_count)) 
     {
-        /* code */
-    } else {
+        size_t supported_cipher_algo_count = sizeof(SUPPORTED_CIPHER_ALGOS) / sizeof(SUPPORTED_CIPHER_ALGOS[0]);
+        if(is_supported_algorithm(key_cipher_algo, SUPPORTED_CIPHER_ALGOS, supported_cipher_algo_count)) {
+            printf("%s is a SIGNATURE algo", &key_cipher_algo);
+            exit(EXIT_FAILURE);
+        }
+        // logger instead
+        printf("Generating symmetric subkey of type %s for key encryption", &key_cipher_algo);
+        char* sub_symkey = wa_generate_symkey(&key_cipher_algo);
+        char* sub_symkey_bytes[MAX_KEY_BYTES_LENGTH];
+        wa_dump_to_json_bytes(sub_symkey_bytes, sub_symkey);
 
+        uint8_t* sub_symkey_ciphertext = wa_encrypt_key_through_multiple_layers(
+                default_keychain_uid,
+                sub_symkey_bytes,
+                key_cipher_layers,
+                0,
+                cryptainer_metadata
+        );
+        if (!strcpy(sub_symkey_ciphertext, key_cipher_layers->u.key_ciphertext)){
+            printf("Failed!");
+            exit(EXIT_FAILURE);
+        }
+        wa_encrypt_bytestring(key_bytes, key_cipher_algo, sub_symkey, key_cipherdict);
+
+    } else {
+        if(!is_supported_algorithm(key_cipher_algo, SUPPORTED_ASYMMETRIC_KEY_ALGOS,supported_sym_key_count) ||
+            !is_supported_algorithm(key_cipher_algo, SUPPORTED_CIPHER_ALGOS, supported_sym_key_count)) 
+        {
+            printf("%s is not a SIGNATURE algo", &key_cipher_algo);
+            exit(EXIT_FAILURE);
+        }
+        if(!is_supported_algorithm(key_cipher_algo, SUPPORTED_ASYMMETRIC_KEY_ALGOS,supported_sym_key_count)) {
+            printf("%s is not a SIGNATURE algo", &key_cipher_algo);
+            exit(EXIT_FAILURE);
+        }
+        char keychain_uid[MAX_UID_LENGTH];
+        char trustee[MAX_TRUSTEE_LENGTH];
+        
+        if(!strcpy(key_cipher_layers->u.keychain_uid, keychain_uid))
+            strcpy(keychain_uid, default_keychain_uid);
+        strcpy(key_cipher_layers->u.key_cipher_trustee, trustee);
+        if (!wa_encrypt_key_with_asymmetric_cipher(key_cipher_algo, keychain_uid, key_bytes, trustee, cryptainer_metadata, key_cipherdict))
+            exit(EXIT_FAILURE);
     }
     
     }
@@ -304,4 +363,18 @@ void wa_dump_to_json_bytes(unsigned char* key_cipherdict, unsigned char* key_byt
     // Placeholder for the JSON serialization function
     // Replace this with actual implementation
     strcpy((char*)key_bytes, (char*)key_cipherdict);  
+}
+
+int wa_encrypt_bytestring(char* key_bytes, char* key_cipher_algo, char* sub_symkey[], Ciphertext* key_cipherdict) {
+    return 0;
+}
+int wa_encrypt_key_with_asymmetric_cipher(
+                                    char* cipher_algo, 
+                                    char* keychain_uid, 
+                                    char* key_bytes, 
+                                    char** trustee,
+                                    char** cryptainer_metadata,
+                                    Ciphertext* key_cipherdict) 
+{
+    return 0;
 }

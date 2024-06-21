@@ -8,9 +8,13 @@
 // Define constants
 #define CRYPTAINER_FORMAT "example_format"
 #define MAX_UID_LENGTH 64
+#define MAX_TRUSTEE_LENGTH 64
 #define MAX_KEY_BYTES_LENGTH 64
 #define SHARED_SECRET_ALGO_MARKER "[SHARED_SECRET]"
 #define SHAMIR_CHUNK_LENGTH 16
+const char* SUPPORTED_SYMMETRIC_KEY_ALGOS[] =  {"AES_CBC", "AES_EAX", "CHACHA20_POLY1305"};
+const char* SUPPORTED_CIPHER_ALGOS[] =  {"AES_CBC", "AES_EAX", "CHACHA20_POLY1305"};
+const char* SUPPORTED_ASYMMETRIC_KEY_ALGOS[] =  {"XXX", "XXX", "XXX"};
 // Define data structures
 struct SymmetricKey {
     char cipher_algo[100];
@@ -26,8 +30,11 @@ struct KeyCipherLayer {
     KeyCipherTrustee* key_cipher_trustee;
     union {
         // TODO: Make a struct for this data
-        const char*key_shared_secret_shards;
-        size_t key_shared_secret_threshold;
+        struct {
+            const char*key_shared_secret_shards;
+            size_t key_shared_secret_threshold;
+        } shards;
+        const char* key_ciphertext;
     } u;
     
 };
